@@ -1,0 +1,28 @@
+# Pipeline configuration. Paths relative to the repo root.
+
+data:
+  processed_dir: data/processed
+  artifacts_dir: data/artifacts
+  n_accounts: 4000
+  n_rings: 25
+  ring_size_range: [4, 9]
+  seed: 42
+
+graph:
+  # Accounts are linked when they share an attribute (device, address, payee).
+  min_component_flag_size: 4
+  # Hub guard: attributes shared by more accounts than this are too common to
+  # be linking evidence (popular merchants, default values) and create giant
+  # components — standard entity-resolution blocking hygiene.
+  max_group_size: 8
+
+model:
+  test_frac: 0.3
+  lgbm:
+    n_estimators: 250
+    learning_rate: 0.05
+    num_leaves: 31
+    verbose: -1
+
+eval:
+  experiment_name: fraudgraph
