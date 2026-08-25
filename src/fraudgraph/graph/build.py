@@ -39,9 +39,7 @@ def graph_features(accounts: pd.DataFrame, g: nx.Graph) -> pd.DataFrame:
     # random collisions percolate a giant component across thousands of
     # accounts, but a double collision by chance is vanishingly rare — while
     # rings (and households) doubly-share by construction.
-    corroborated = nx.Graph(
-        (u, v) for u, v, d in g.edges(data=True) if d.get("weight", 1) >= 2
-    )
+    corroborated = nx.Graph((u, v) for u, v, d in g.edges(data=True) if d.get("weight", 1) >= 2)
     corroborated.add_nodes_from(g.nodes)
     component_of = {}
     component_size = {}

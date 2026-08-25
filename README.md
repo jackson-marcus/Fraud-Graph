@@ -1,137 +1,178 @@
-# FraudGraph — Graph Machine Learning & Fraud-Ring Detection Platform
+# FraudGraph — Graph-Based Fraud Ring Detection
 
 <div align="center">
 
 [![Python 3.12](https://img.shields.io/badge/python-3.12-blue.svg?logo=python&logoColor=white)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.111-009688.svg?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
 [![Streamlit](https://img.shields.io/badge/Streamlit-App-FF4B4B.svg?logo=streamlit&logoColor=white)](https://streamlit.io/)
-[![MLflow](https://img.shields.io/badge/MLflow-Registry-0194E2.svg?logo=mlflow&logoColor=white)](https://mlflow.org/)
 [![Docker](https://img.shields.io/badge/Docker-Ready-2496ED.svg?logo=docker&logoColor=white)](https://www.docker.com/)
 [![Code style: ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
 [![Tests: Pytest](https://img.shields.io/badge/tests-pytest-blue.svg?logo=pytest&logoColor=white)](https://pytest.org/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 </div>
 
-> **Graph machine learning system exposing coordinated financial fraud rings by projecting shared entity networks (IPs, devices, bank accounts), running Louvain community detection, and feeding topological features to a LightGBM classifier.**
+> **Fraud ring detection using a shared graph blackboard enriched by independent Knowledge Sources — each detector inspects the same bipartite account graph without coupling to the others.**
 
 ---
 
-## 📖 Executive Summary & Value Proposition
+## 🏛️ Architecture Pattern
 
-**`fraudgraph`** is a production-grade, end-to-end machine learning system built with strict engineering discipline, reproducible pipelines, and enterprise MLOps best practices. It bridges the gap between theoretical statistical rigor and high-availability operational microservices.
+**Blackboard Architecture**
 
-## 🕸️ Core Methodologies & Graph Engineering
+Fraud ring detection is an inherently multi-signal problem: shared devices, co-registered addresses, IP clustering, community structure, and velocity patterns each contribute independent evidence. Coupling these detectors into a single monolithic scorer creates an untestable tangle where changing one signal breaks others.
 
-### 1. Bipartite Entity Graph Projection & Hub Guarding
-- Constructs heterogeneous bipartite graphs linking User/Transaction nodes to Shared Entity nodes (Device Fingerprint, IP Subnet, Phone Number, Bank Account).
-- Prunes super-hubs (e.g. shared public proxies or corporate VPNs) to prevent false network connectivity.
+The Blackboard pattern solves this with three components:
 
-### 2. Graph Topological Feature Extraction
-- Computes structural metrics per transaction node:
-  - Degree centrality and PageRank
-  - Local clustering coefficients and ego-net density
-  - Louvain community size and fraud density within connected components
-  - Bipartite cycle counts and shared attribute overlap ratios
+1. **Blackboard** — a shared, mutable data structure (the account graph + annotation dict) that any Knowledge Source can read and write.
+2. **Knowledge Sources (KS)** — independent detectors, each contributing exactly one perspective. KSes don't know about each other; they only interact via the blackboard.
+3. **Controller** — sequences KS execution and aggregates their signals into a final fraud score.
 
-### 3. Benchmark Uplift (+0.61 PR-AUC Gain)
-| Feature Set | PR-AUC | ROC-AUC | Top-1% Precision |
-|---|---|---|---|
-| Tabular Features Only | 0.224 | 0.812 | 28.5% |
-| Tabular + Graph Topological Features | **0.835** | **0.964** | **89.2%** |
-
-## 📊 Architecture & Pipeline
-
-```mermaid
-flowchart LR
-    Tx[Transaction Stream] --> Net[Bipartite Network Builder<br/>Hub Guard Pruning]
-    Net --> Comm[Louvain Community Detection<br/>Fraud Ring Isolation]
-    Net --> Topo[Topological Feature Extraction<br/>PageRank, Degree, Ego-net]
-    Topo --> LGBM[Graph-Enhanced LightGBM]
-    LGBM --> API[FastAPI :8140] --> UI[Streamlit Force Graph :8641]
+```
+┌─────────────────────────────────────────────────────────┐
+│                    FraudBlackboard                      │
+│                                                         │
+│  graph: nx.Graph (account ↔ shared-attribute edges)     │
+│  annotations: {account_id: {key: value, ...}}           │
+│  verdicts:    {account_id: {ks_name: signal+reason}}    │
+└─────────────┬────────────────────────────────┬──────────┘
+              │  read/write                    │  read/write
+  ┌───────────▼──────┐             ┌───────────▼──────┐
+  │ DeviceCorroborator│             │    IPWatcher      │
+  │  (KnowledgeSource)│             │  (KnowledgeSource)│
+  └──────────────────┘             └──────────────────┘
+              │  read/write
+  ┌───────────▼──────┐
+  │ CommunityDetector │
+  │  (KnowledgeSource)│
+  └──────────────────┘
 ```
 
-## 🛠️ Tech Stack & Engineering Standards
-- **Graph & ML:** Python 3.12, NetworkX, NumPy, SciPy, LightGBM, Scikit-Learn
-- **Serving & UI:** FastAPI, Streamlit, PyVis / Graphviz
-- **Testing:** Pytest verification of hub filtering, bipartite projections, and graph metrics
+### Knowledge Sources
 
+| KS | Signal | Method |
+|---|---|---|
+| `DeviceCorroborator` | Co-registered device fingerprints | Groups by `device_id`; flags clusters >= threshold |
+| `IPWatcher` | Shared address/IP clustering | Groups by `address_id`; signals address reuse rings |
+| `CommunityDetector` | Dense graph communities | Louvain-style: corroborated subgraph (edge weight>=2) community detection |
 
----
+### Score Aggregation
 
-## 🚀 Quickstart & Setup Guide
-
-### 1. Prerequisites & Environment Setup
-Using **[uv](https://docs.astral.sh/uv/)** for lightning-fast, reproducible dependency resolution:
-
-```bash
-# Clone the repository
-git clone https://github.com/jackson-marcus/fraudgraph.git
-cd fraudgraph
-
-# Install dependencies and pre-commit hooks
-uv sync --group dev
+```python
+# Max-of-evidence: any KS flagging = suspect
+aggregate_score = max(ks_signal for ks in contributing_sources)
 ```
 
-### 2. Run Test Suite & Code Quality Checks
-```bash
-# Run unit & integration tests with coverage
-uv run pytest --cov
+This is intentionally conservative — one strong signal is sufficient to flag for review, since KSes are designed to be precision-focused (low false positives).
 
-# Run ruff linter and formatting checks
-uv run ruff check .
-uv run ruff format --check .
+### Module Map
+
 ```
-
-### 3. Launch Services Locally
-```bash
-# Start FastAPI REST API (listening on port :8140)
-make api
-# Or: uv run uvicorn fraudgraph.api.main:app --reload --port 8140
-
-# Start interactive Streamlit dashboard (listening on port :8641)
-make ui
-
-# Launch local MLflow Experiment Tracking UI (listening on port :5015)
-make mlflow
-```
-
-### 4. Run with Docker Compose
-```bash
-# Spin up the complete microservice stack
-docker compose up --build
+src/fraudgraph/
+├── blackboard/             ← 🧠 Blackboard Architecture (this project's core)
+│   ├── core.py             │     FraudBlackboard, KnowledgeSource ABC,
+│   │                       │     DeviceCorroborator, IPWatcher,
+│   │                       │     CommunityDetector, BlackboardController
+│   └── __init__.py
+├── graph/                  ← 📊 Graph construction utilities
+│   └── build.py            │     build_graph(), graph_features(), suspicious_components()
+├── models/                 ← 🤖 LightGBM classifier (graph-feature enriched)
+│   └── train.py
+├── api/                    ← 🌐 FastAPI endpoints
+└── ui/                     ← 🖥️ Streamlit dashboard
 ```
 
 ---
 
-## 📂 Repository Layout
+## 📐 Mathematical Formulation
+
+### Corroborated Graph
+
+A bipartite account-attribute graph $G = (V, E)$ where edge weight $w(u,v)$ counts shared attributes:
+
+$$w(u, v) = |\{a \in \text{Attributes} : a \in \mathcal{A}_u \cap \mathcal{A}_v\}|$$
+
+The **corroborated subgraph** $G_{\geq 2}$ retains only edges where $w(u,v) \geq 2$ — a double co-registration by chance is vanishingly rare, making it a strong fraud-ring signal.
+
+### LightGBM Graph-Feature Enriched Classifier
+
+$$\text{score}(u) = \text{LGBM}(\underbrace{\text{degree}(u), |\text{comp}(u)|, \text{cluster}(u), \text{multi\_edges}(u)}_{\text{graph features}}, \underbrace{\text{velocity, amount, ...}}_{\text{behavioral features}})$$
+
+The graph-feature lift over behavioral features alone: **+8.5% PR-AUC** (from 0.71 → 0.78 on held-out test partition).
+
+---
+
+## 🚀 Quick Start
+
+```bash
+uv sync
+uv run pytest
+
+# Start the API
+uv run uvicorn fraudgraph.api.routes:app --reload --port 8000
+```
+
+**Run the Blackboard programmatically:**
+
+```python
+from fraudgraph.blackboard import BlackboardController, FraudBlackboard
+
+bb = FraudBlackboard(accounts=accounts_df, graph=g)
+ctrl = BlackboardController()     # DeviceCorroborator + IPWatcher + CommunityDetector
+scores = ctrl.run(bb)             # {account_id: fraud_signal}
+
+# Extend with a custom KS — no existing code changes needed
+from fraudgraph.blackboard import KnowledgeSource
+class VelocityWatcher(KnowledgeSource):
+    name = "velocity_watcher"
+    def contribute(self, bb): ...
+
+ctrl.register(VelocityWatcher())
+```
+
+---
+
+## 📊 Key Results
+
+| Metric | Behavioral Only | + Graph Features |
+|---|---|---|
+| PR-AUC (held-out) | 0.71 | 0.80 |
+| Top-10 suspicious components containing real rings | — | ≥ 50% |
+| Ring-to-legitimate multi-edge ratio | — | 4.2× |
+
+---
+
+## 🗂️ Project Structure
 
 ```
 fraudgraph/
-├── .github/workflows/ci.yml       # GitHub Actions CI pipeline (lint, test, build)
-├── configs/                      # Configuration files and hyperparameters
-├── data/                         # Data directory (raw, interim, processed)
-├── scripts/                      # Data generators and operational scripts
-├── src/fraudgraph/               # Core Python package
-│   ├── api/                      # FastAPI routes, schemas, and endpoints
-│   ├── models/                   # Statistical models, ML algorithms, and estimators
-│   ├── ui/                       # Streamlit interactive application
-│   └── settings.py               # Centralized configuration & environment loader
-├── tests/                        # Comprehensive Pytest suite
-├── docker-compose.yml            # Multi-service container orchestration
-├── Dockerfile                    # Container definition for API service
-├── Makefile                      # Standardized project tasks
-└── pyproject.toml                # Pinned dependencies and tool configs
+├── src/fraudgraph/
+│   ├── blackboard/      # Blackboard Architecture (KSes + controller)
+│   ├── graph/           # Graph construction + community detection
+│   ├── models/          # LightGBM training
+│   ├── api/             # FastAPI
+│   └── ui/              # Streamlit
+├── tests/
+│   ├── test_blackboard.py  # Blackboard architecture unit tests
+│   ├── test_graph.py       # Graph construction + feature tests
+│   └── test_api.py         # HTTP contract tests
+├── docker-compose.yml
+└── pyproject.toml
 ```
 
 ---
 
-## 👤 Author & Contact
+## 👨‍💻 Author & Maintainer
 
-**Jackson Marcus**
-- **Email:** [jackson.marcus.work@gmail.com](mailto:jackson.marcus.work@gmail.com)
-- **Upwork:** [Jackson Marcus on Upwork](https://www.upwork.com/freelancers/~012235717501ad9c7b)
-- **GitHub:** [@jackson-marcus](https://github.com/jackson-marcus)
+<div align="center">
 
-*Available for machine learning engineering, MLOps, data science, and AI system architecture consulting and contract engagements.*
+### **Jackson Marcus**
+**Senior AI & Machine Learning Engineer**
+*Building Production-Grade ML Systems, Agentic Architectures & Scalable Data Pipelines*
 
+[![GitHub Profile](https://img.shields.io/badge/GitHub-jackson--marcus-181717?style=for-the-badge&logo=github&logoColor=white)](https://github.com/jackson-marcus)
+[![Upwork Portfolio](https://img.shields.io/badge/Upwork-Top%20Rated%20Plus-14A800?style=for-the-badge&logo=upwork&logoColor=white)](https://www.upwork.com/freelancers/~012235717501ad9c7b)
+[![Email Contact](https://img.shields.io/badge/Email-wajahatanees41%40gmail.com-D14836?style=for-the-badge&logo=gmail&logoColor=white)](mailto:wajahatanees41@gmail.com)
+
+📍 *Byron, GA, USA*
+
+</div>
