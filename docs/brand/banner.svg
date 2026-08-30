@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="720" height="168" viewBox="0 0 720 168" role="img" aria-label="FraudGraph — Graph-based fraud ring detection">
+  <defs><linearGradient id="b3100" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#BE123C"/><stop offset="1" stop-color="#880c2b"/></linearGradient></defs>
+  <rect x="28" y="28" width="112" height="112" rx="25" fill="url(#b3100)"/>
+  <g transform="translate(56.0 56.0) scale(2.3333)"><g fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="6" r="2"/><circle cx="19" cy="8" r="2"/><circle cx="12" cy="18" r="2"/><path d="M6.7 7.2 10.4 16.4M17.3 9.3 13.4 16.6M7 6.4 17 7.6"/></g></g>
+  <text x="168" y="78" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="40" font-weight="700" fill="#BE123C">FraudGraph</text>
+  <text x="168" y="112" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="20" font-weight="400" fill="#64748b">Graph-based fraud ring detection</text>
+</svg>
