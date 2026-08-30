@@ -17,8 +17,6 @@
 
 </div>
 
-> **Portfolio project.** Built to demonstrate graph modelling and the Blackboard architecture on realistic (synthetic) transaction data. Not hardened for production use.
-
 ---
 
 ## The problem
