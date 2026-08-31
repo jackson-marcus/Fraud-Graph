@@ -1,41 +1,46 @@
-"""Publish GraphEdge records onto an in-memory Redis Stream."""
+"""Append-only journal of the account openings folded into the live graph.
+
+The classifier was fitted on a snapshot. Every arrival admitted afterwards
+moves the live graph away from that snapshot, so there has to be an ordered,
+replayable record of exactly how far it has moved — otherwise nobody can say
+whether a live score came from the trained distribution or from an hour of
+undocumented drift. Replaying the journal over a fresh
+:class:`~fraudgraph.workers.processor.LiveGraph` reproduces the current state
+exactly, which is also how the arrivals get folded back into the next training
+snapshot.
+"""
 
 from __future__ import annotations
 
-from typing import Any
-
-from fraudgraph.streams.schemas import STREAM_NAME, StreamEvent
+from fraudgraph.streams.schemas import AccountOpened
 
 
-class InMemoryStream:
-    """Minimal XADD/XREAD stand-in used by tests and local workers."""
+class ArrivalJournal:
+    """Ordered log of admitted registrations, with account-id allocation."""
 
-    def __init__(self) -> None:
-        self.entries: list[StreamEvent] = []
+    def __init__(self, next_account_id: int = 1) -> None:
+        self._next_account_id = int(next_account_id)
+        self._entries: list[AccountOpened] = []
 
-    def xadd(self, event: StreamEvent) -> str:
-        self.entries.append(event)
-        return event.event_id
+    def __len__(self) -> int:
+        return len(self._entries)
 
-    def xread(self, last_id: str | None = None) -> list[StreamEvent]:
-        if last_id is None:
-            return list(self.entries)
-        seen = False
-        pending: list[StreamEvent] = []
-        for event in self.entries:
-            if seen:
-                pending.append(event)
-            elif event.event_id == last_id:
-                seen = True
-        return pending
+    @property
+    def next_account_id(self) -> int:
+        return self._next_account_id
 
+    def record(self, payload: dict, account_id: int | None = None) -> AccountOpened:
+        """Validate a registration and append it. Raises ValueError if malformed.
 
-class StreamProducer:
-    def __init__(self, stream: InMemoryStream, stream_name: str = STREAM_NAME) -> None:
-        self.stream = stream
-        self.stream_name = stream_name
-
-    def publish(self, payload: dict[str, Any], **headers: str) -> StreamEvent:
-        event = StreamEvent.create(payload, **headers)
-        self.stream.xadd(event)
+        Nothing is appended when validation fails, so a rejected payload does
+        not consume a sequence number or an account id.
+        """
+        assigned = self._next_account_id if account_id is None else int(account_id)
+        event = AccountOpened.create(seq=len(self._entries) + 1, account_id=assigned, payload=payload)
+        self._entries.append(event)
+        self._next_account_id = max(self._next_account_id, assigned + 1)
         return event
+
+    def replay(self, since: int = 0) -> list[AccountOpened]:
+        """Entries with ``seq > since``, in arrival order."""
+        return [e for e in self._entries if e.seq > since]

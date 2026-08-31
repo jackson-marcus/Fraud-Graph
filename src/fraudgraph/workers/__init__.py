@@ -1,1 +1,5 @@
-"""Downstream workers that fold GraphEdge events into features."""
+"""Incremental maintenance of the shared-attribute account graph."""
+
+from fraudgraph.workers.processor import FEATURE_COLUMNS, LiveGraph
+
+__all__ = ["FEATURE_COLUMNS", "LiveGraph"]
