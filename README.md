@@ -141,6 +141,37 @@ uv run pytest --cov
 - `test_graph.py` — graph construction and feature extraction
 - `test_api.py` — HTTP contract tests
 
+### The hub guard is a lever under arrivals
+
+`graph.max_group_size` drops any attribute shared by more than N accounts, on
+the entity-resolution argument that a device held by hundreds of accounts is a
+popular default rather than evidence. That is sound on a static snapshot. Under
+live arrivals it is something an attacker can pull: register throwaway accounts
+on the ring's own shared device until the group crosses N, and the guard deletes
+every link that device was contributing. The ring stops looking like a ring.
+
+`scripts/hub_guard_probe.py` plays that attack against every planted ring in the
+bundled data:
+
+```
+max_group_size          : 8
+rings the graph flags   : 25
+rings partly silenced   : 13
+rings fully silenced    : 1
+junk accounts needed    : median 3, min 1, max 5
+alerts lost             : 50 of 145
+```
+
+Three throwaway registrations is not a cost; it is a rounding error for anyone
+running a ring. The guard is kept — the false-positive argument for it is real —
+but it is documented here as an attack surface rather than a safety feature, and
+the live consumer reports which attribute a silenced link was dropped on so an
+analyst can see the group grow. Reproduce with:
+
+```bash
+uv run python scripts/hub_guard_probe.py
+```
+
 ## Limitations
 
 - Detection quality depends on attribute coverage — rings that share no observable attributes are invisible to the graph signals.
